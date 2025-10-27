@@ -30,3 +30,8 @@ or
 git branches-report
 ```
 Each command will guide you interactively through prompts for author, branch pattern, and date filters.
+
+## Demo
+https://github.com/user-attachments/assets/d5dc1e90-3aa1-4e2d-b684-d990a85bb4d1
+
+
