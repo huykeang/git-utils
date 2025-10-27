@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Prompt user for input
+read -p "Enter author name to filter: " AUTHOR
+read -p "Enter branch name pattern to filter (e.g., stg): " PATTERN
+read -p "Enter year or date pattern to filter (e.g., 2024): " DATE
+
+# Step 1: List all remote branches and apply filters
+echo
+echo "Searching remote branches for author='$AUTHOR', pattern='$PATTERN', date='$DATE'..."
+git fetch -p --quiet
+filtered=$(git for-each-ref --sort=-committerdate --format='%(committerdate:short) %(authorname) %(refname:short)' refs/remotes/origin/ \
+           | grep "$PATTERN" | grep "$AUTHOR" | grep "$DATE")
+
+# Step 2: Show filtered branches
+if [ -z "$filtered" ]; then
+  echo "No matching branches found."
+  exit 0
+fi
+
+echo
+echo "Matching branches:"
+echo "$filtered"
+echo
+
+# Step 3: Confirm deletion
+read -p "Do you want to delete these branches? (y/n) " CONFIRM
+if [ "$CONFIRM" = "y" ]; then
+  echo "$filtered" | awk '{print $3}' | sed 's|origin/||' | xargs -n 1 git push origin --delete
+  echo "Branches deleted successfully."
+else
+  echo "Aborted."
+fi
