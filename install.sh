@@ -27,5 +27,6 @@ echo "✅ Installation complete!"
 echo "You can now use your custom Git commands like:"
 echo "    git cleanup-branches"
 echo "    git branches-report"
+echo "    git clone-gitlab-group-repos {YOUR_GROUP_URL}"
 echo
 echo "ℹ️  Run 'source ~/.zshrc' or open a new terminal to start using it."

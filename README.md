@@ -5,6 +5,7 @@ Currently includes:
 
 - `git branches-report` — generate a report of remote branches filtered by author, name pattern, and date. Useful for reviewing stale or outdated branches before cleanup.
 - `git cleanup-branches` — interactively delete remote branches that match specific filters (author, pattern, date) with confirmation for each branch.
+- `git clone-gitlab-group-repos` — clone all repositories from a GitLab group (supports subgroups, pagination, and private/self-hosted GitLab instances).
 
 ## 🚀 Installation
 
@@ -17,7 +18,7 @@ curl -sSL https://raw.githubusercontent.com/huykeang/git-utils/main/install.sh |
 This will:
 - Clone the repo to `~/.git-utils`
 - Add it to your PATH automatically
-- Make the scripts available as Git subcommands like `git cleanup-branches` or `git branches-report`
+- Make the scripts available as Git subcommands like `git cleanup-branches` or `git branches-report` or `git clone-gitlab-group-repos`
 
 ## 🧩 Usage
 
@@ -28,6 +29,10 @@ git cleanup-branches
 or
 ```bash
 git branches-report
+```
+or
+```bash
+git clone-gitlab-group-repos https://stage-gitlab.company.com/eco/unified/backend
 ```
 Each command will guide you interactively through prompts for author, branch pattern, and date filters.
 

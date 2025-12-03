@@ -1,0 +1,83 @@
+#!/bin/bash
+# Clone all repositories from a GitLab group URL
+# Usage:
+#   export GITLAB_PRIVATE_TOKEN="your_access_token"
+#   git clone-gitlab-group-repos https://gitlab.example.com/group/subgroup
+
+set -e
+
+GROUP_URL="$1"
+
+if [ -z "$GROUP_URL" ]; then
+  echo "❌ Usage: git clone-gitlab-group-repos <GROUP_URL>"
+  exit 1
+fi
+
+if [ -z "$GITLAB_PRIVATE_TOKEN" ]; then
+  echo "❌ Please set your access token first:"
+  echo "   export GITLAB_PRIVATE_TOKEN=your_token"
+  exit 1
+fi
+
+# Extract GitLab host and group path
+if [[ "$GROUP_URL" =~ ^https?://([^/]+)/(.+)$ ]]; then
+  GITLAB_URL="https://${BASH_REMATCH[1]}"
+  GROUP_PATH="${BASH_REMATCH[2]}"
+else
+  echo "❌ Invalid group URL format"
+  exit 1
+fi
+
+# Auto URL-encode group path (requires Python 3)
+ENCODED_GROUP_PATH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$GROUP_PATH''', safe=''))")
+
+PER_PAGE=100
+PAGE=1
+
+echo "🔗 GitLab URL: $GITLAB_URL"
+echo "📁 Group Path: $GROUP_PATH"
+echo "📦 Encoded Path: $ENCODED_GROUP_PATH"
+echo "🚀 Cloning all repositories..."
+
+while true; do
+  RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gitlab_resp.json \
+    --header "PRIVATE-TOKEN: $GITLAB_PRIVATE_TOKEN" \
+    "$GITLAB_URL/api/v4/groups/$ENCODED_GROUP_PATH/projects?include_subgroups=true&per_page=$PER_PAGE&page=$PAGE")
+
+  STATUS=${RESPONSE:(-3)}
+
+  # Handle HTTP errors
+  if [ "$STATUS" -ne 200 ]; then
+    echo "❌ GitLab API returned HTTP $STATUS"
+    cat /tmp/gitlab_resp.json
+    exit 1
+  fi
+
+  # Validate JSON
+  if ! jq empty /tmp/gitlab_resp.json >/dev/null 2>&1; then
+    echo "❌ Invalid JSON from GitLab API"
+    cat /tmp/gitlab_resp.json
+    exit 1
+  fi
+
+  COUNT=$(jq '. | length' /tmp/gitlab_resp.json)
+
+  if [ "$COUNT" -eq 0 ]; then
+    echo "✅ All repositories cloned."
+    break
+  fi
+
+  jq -r '.[].ssh_url_to_repo' /tmp/gitlab_resp.json | while read -r repo; do
+    if [ -n "$repo" ]; then
+      name=$(basename "$repo" .git)
+      if [ -d "$name" ]; then
+        echo "🔄 $name already exists, skipping..."
+      else
+        echo "⬇️  Cloning $repo ..."
+        git clone "$repo"
+      fi
+    fi
+  done
+
+  PAGE=$((PAGE + 1))
+done
