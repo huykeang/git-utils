@@ -14,8 +14,15 @@ if [ -z "$GROUP_URL" ]; then
 fi
 
 if [ -z "$GITLAB_PRIVATE_TOKEN" ]; then
-  echo "❌ Please set your access token first:"
-  echo "   export GITLAB_PRIVATE_TOKEN=your_token"
+  echo "❌ GITLAB_PRIVATE_TOKEN is not set."
+  echo "Create a personal access token in the GitLab web UI:"
+  echo "  1. Sign in to the GitLab host you want to clone from"
+  echo "  2. Open your avatar → Edit profile (or Preferences) → Access tokens"
+  echo "     https://<gitlab-host>/-/user_settings/personal_access_tokens"
+  echo "  3. Add a new token and enable the read_api scope"
+  echo "  4. Create the token and copy it (GitLab shows it only once)"
+  echo "Then run:"
+  echo "  export GITLAB_PRIVATE_TOKEN=your_token"
   exit 1
 fi
 
@@ -33,11 +40,14 @@ ENCODED_GROUP_PATH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('
 
 PER_PAGE=100
 PAGE=1
+COLLECTED="$(mktemp)"
+echo '[]' >"$COLLECTED"
+trap 'rm -f "$COLLECTED"' EXIT
 
 echo "🔗 GitLab URL: $GITLAB_URL"
 echo "📁 Group Path: $GROUP_PATH"
 echo "📦 Encoded Path: $ENCODED_GROUP_PATH"
-echo "🚀 Cloning all repositories..."
+echo "🔎 Fetching repositories..."
 
 while true; do
   RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gitlab_resp.json \
@@ -63,21 +73,93 @@ while true; do
   COUNT=$(jq '. | length' /tmp/gitlab_resp.json)
 
   if [ "$COUNT" -eq 0 ]; then
-    echo "✅ All repositories cloned."
     break
   fi
 
-  jq -r '.[].ssh_url_to_repo' /tmp/gitlab_resp.json | while read -r repo; do
-    if [ -n "$repo" ]; then
-      name=$(basename "$repo" .git)
-      if [ -d "$name" ]; then
-        echo "🔄 $name already exists, skipping..."
-      else
-        echo "⬇️  Cloning $repo ..."
-        git clone "$repo"
-      fi
-    fi
-  done
+  jq -s '.[0] + .[1]' "$COLLECTED" /tmp/gitlab_resp.json >"$COLLECTED.next"
+  mv "$COLLECTED.next" "$COLLECTED"
 
   PAGE=$((PAGE + 1))
 done
+
+TOTAL=$(jq 'length' "$COLLECTED")
+
+if [ "$TOTAL" -eq 0 ]; then
+  echo "No repositories found."
+  exit 0
+fi
+
+echo
+echo "📊 Repositories by subgroup:"
+jq -r --arg group "$GROUP_PATH" '
+  def subgroup:
+    (.namespace.full_path // "") as $ns
+    | if $ns == $group then "(root)"
+      elif ($group != "" and ($ns | startswith($group + "/"))) then
+        $ns[($group | length) + 1:]
+      else
+        $ns
+      end;
+  group_by(subgroup)
+  | .[]
+  | "  \(.[0] | subgroup): \(length)"
+' "$COLLECTED"
+echo "Total: $TOTAL"
+echo
+
+echo "Clone these repositories?"
+echo "  1) Keep subgroup folder structure"
+echo "  2) Flat"
+read -p "Choice (1/2, or n to abort): " CHOICE
+
+case "$CHOICE" in
+  1) LAYOUT="folders" ;;
+  2) LAYOUT="flat" ;;
+  *)
+    echo "Aborted."
+    exit 0
+    ;;
+esac
+
+echo "🚀 Cloning repositories..."
+
+while IFS=$'\t' read -r repo subgroup; do
+  if [ -z "$repo" ]; then
+    continue
+  fi
+
+  name="$(basename "$repo" .git)"
+  if [ "$LAYOUT" = "folders" ] && [ -n "$subgroup" ]; then
+    dest="$subgroup/$name"
+  else
+    dest="$name"
+  fi
+
+  if [ -d "$dest" ]; then
+    echo "🔄 $dest already exists, skipping..."
+    continue
+  fi
+
+  echo "⬇️  Cloning $repo ..."
+  if [ "$LAYOUT" = "folders" ]; then
+    mkdir -p "$(dirname "$dest")"
+    git clone "$repo" "$dest"
+  else
+    git clone "$repo"
+  fi
+done < <(jq -r --arg group "$GROUP_PATH" '
+  def subgroup:
+    (.namespace.full_path // "") as $ns
+    | if $ns == $group then ""
+      elif ($group != "" and ($ns | startswith($group + "/"))) then
+        $ns[($group | length) + 1:]
+      else
+        $ns
+      end;
+  .[]
+  | (.ssh_url_to_repo // "") as $url
+  | select($url != "")
+  | "\($url)\t\(subgroup)"
+' "$COLLECTED")
+
+echo "✅ All repositories cloned."

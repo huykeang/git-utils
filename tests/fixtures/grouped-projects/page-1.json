@@ -1,0 +1,10 @@
+[
+  {
+    "ssh_url_to_repo": "git@gitlab.example.com:eco/unified/backend/api.git",
+    "namespace": { "full_path": "eco/unified/backend", "name": "backend" }
+  },
+  {
+    "ssh_url_to_repo": "git@gitlab.example.com:eco/unified/backend/worker.git",
+    "namespace": { "full_path": "eco/unified/backend", "name": "backend" }
+  }
+]
